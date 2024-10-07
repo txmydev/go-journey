@@ -7,36 +7,33 @@ import (
 	"net"
 	"os"
 	"strings"
+	"time"
 )
 
 type client struct {
-	name       string
-	id         int
-	addr       string
 	connection net.Conn
+	name       string
+	addr       string
 	color      string
+	id         int
 }
 
 type server struct {
+	connection       net.Listener
 	address          string
+	users            []*client
 	port             uint32
 	connectedClients uint8
-	users            []*client
 	running          bool
-	connection       net.Listener
-	messageCount     uint64
+	messages         []Message
+}
+
+type Message struct {
+	sentAt time.Time
+	msg    string
 }
 
 const MAX_MESSAGE_SIZE uint16 = 1024
-
-func (server *server) CreateClient(addr string) *client {
-	var cl client = client{"", int(server.connectedClients), addr, nil, "0"}
-
-	server.users[server.connectedClients] = &cl
-	server.connectedClients++
-
-	return &cl
-}
 
 func (server *server) PrintState() {
 	fmt.Printf(AnsiBackground("6")+"started listener at port %v%v\n", server.port, CLR_RESET)
@@ -48,9 +45,8 @@ func (server *server) PrintState() {
 }
 
 func (server *server) Listen() {
-	var addr string = server.address + ":" + fmt.Sprintf("%d", server.port)
+	addr := server.address + ":" + fmt.Sprintf("%d", server.port)
 	listener, err := net.Listen("tcp", addr)
-
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -60,15 +56,13 @@ func (server *server) Listen() {
 	server.connection = listener
 	server.running = true
 
-	// listener.(*net.TCPListener).SetDeadline(time.Now().Add(100 * time.Millisecond))
-
 	for {
 		if !server.running {
 			fmt.Println("server shutdown")
 			break
 		}
 
-		var connection, err = listener.Accept()
+		connection, err := listener.Accept()
 		if err != nil {
 			if errors.Is(err, os.ErrDeadlineExceeded) {
 				continue
@@ -107,15 +101,19 @@ func (server *server) GetClient(nameOrAddress string) (*client, error) {
 }
 
 func (server *server) Broadcast(message string) {
-	fmt.Println(message)
+	sentAt := time.Now()
+	server.messages = append(server.messages, Message{sentAt, message})
+
+	sentAtStr := AnsiBackground("2") + "[" + sentAt.Format(time.Kitchen) + "]" + CLR_RESET + " "
+	finalMessage := sentAtStr + message
 
 	for _, user := range server.users {
 		if user != nil && user.connection != nil {
-			user.connection.Write([]byte(message))
+			user.connection.Write([]byte(finalMessage))
 		}
 	}
 
-	server.messageCount++
+	fmt.Println(finalMessage)
 }
 
 func (server *server) ListUserNames() ([]string, error) {
@@ -123,7 +121,7 @@ func (server *server) ListUserNames() ([]string, error) {
 		return []string{""}, errors.New("there aren't any clients connected to the server")
 	}
 
-	var names []string = make([]string, server.connectedClients)
+	names := make([]string, server.connectedClients)
 	for index, user := range server.users {
 		if user.name == "" {
 			continue
@@ -135,7 +133,7 @@ func (server *server) ListUserNames() ([]string, error) {
 }
 
 func AcceptConnection(server *server, connection net.Conn) {
-	var user client = client{}
+	user := client{}
 
 	user.connection = connection
 	user.addr = connection.LocalAddr().String()
@@ -159,7 +157,7 @@ func AcceptConnection(server *server, connection net.Conn) {
 			break
 		}
 
-		var data string = string(read[:len])
+		data := string(read[:len])
 		if strings.HasPrefix(data, "$connection-handshake") {
 			if user.name != "" {
 				fmt.Printf("%v received handshake when already connected (weird)\n", "["+user.name+"]")

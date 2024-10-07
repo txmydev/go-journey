@@ -10,9 +10,11 @@ import (
 	"sync"
 )
 
-var wait sync.WaitGroup = sync.WaitGroup{}
-var running bool = true
-var username string
+var (
+	wait     sync.WaitGroup = sync.WaitGroup{}
+	running  bool           = true
+	username string
+)
 
 const CLR_RESET = "\033[0m"
 
@@ -38,11 +40,6 @@ func write(connection net.Conn) {
 			break
 		}
 
-		_, err := reader.Peek(1)
-		if err == nil {
-			continue
-		}
-
 		text, _ := reader.ReadString('\n')
 		text = strings.TrimSpace(text)
 
@@ -61,7 +58,7 @@ func write(connection net.Conn) {
 
 	fmt.Println("[write] connection closed")
 
-  running = false
+	running = false
 }
 
 func read(connection net.Conn) {
@@ -74,7 +71,6 @@ func read(connection net.Conn) {
 
 		var read []byte = make([]byte, 1024)
 		_, err := connection.Read(read)
-
 		if err != nil {
 			if errors.Is(err, os.ErrDeadlineExceeded) {
 				continue
@@ -85,7 +81,7 @@ func read(connection net.Conn) {
 			break
 		}
 
-		fmt.Printf("\r%v[server]%v %v\n", AnsiBackground("2"), CLR_RESET, string(read))
+		fmt.Printf("%v\n", string(read))
 	}
 
 	connection.Close()
